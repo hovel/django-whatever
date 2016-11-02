@@ -43,14 +43,14 @@ def any_field_blank(function):
         if kwargs.get('isnull', False):
             return None
 
-        if field.blank and random.random() < 0.1:
-            if field.null:
-                return None
-            else:
-                try:
-                    return field.to_python('')
-                except ValidationError as e:  # bool, int, etc.
-                    pass
+        # if field.blank and random.random() < 0.1:
+        #     if field.null:
+        #         return None
+        #     else:
+        #         try:
+        #             return field.to_python('')
+        #         except ValidationError as e:  # bool, int, etc.
+        #             pass
 
         return function(field, **kwargs)
     return wrapper
