@@ -3,12 +3,15 @@
 """
 Values generators for common Django Fields
 """
-import re, os, random
+from __future__ import division
+import random
+import re
+import os
 from decimal import Decimal
 from datetime import date, datetime, time
 from string import ascii_letters, digits, hexdigits
-from random import choice
 
+import six
 from django.conf import settings
 from django.core import validators
 from django.core.exceptions import ValidationError
@@ -17,7 +20,6 @@ from django.contrib.contenttypes.models import ContentType
 from django.db import models, IntegrityError, transaction
 from django.db.models import Q
 from django.db.models.fields.files import FieldFile
-
 
 try:
     from django.core.validators import validate_ipv6_address, validate_ipv46_address
@@ -85,7 +87,11 @@ def any_biginteger_field(field, **kwargs):
     """
     min_value = kwargs.get('min_value', 1)
     max_value = kwargs.get('max_value', 10**10)
-    return long(xunit.any_int(min_value=min_value, max_value=max_value))
+    if six.PY3:
+        long_type = int
+    else:
+        long_type = long
+    return long_type(xunit.any_int(min_value=min_value, max_value=max_value))
 
 
 @any_field.register(models.BooleanField)
@@ -141,8 +147,8 @@ def any_commaseparatedinteger_field(field, **kwargs):
     >>> [int(num) for num in result.split(',')] and 'OK'
     'OK'
     """
-    nums_count = field.max_length/2
-    nums = [str(xunit.any_int(min_value=0, max_value=9)) for _ in xrange(0, nums_count)]
+    nums_count = field.max_length // 2
+    nums = [str(xunit.any_int(min_value=0, max_value=9)) for _ in six.moves.range(0, nums_count)]
     return ",".join(nums)
 
 
@@ -216,9 +222,7 @@ def any_email_field(field, **kwargs):
     >>> re.match(r"(?:^|\s)[-a-z0-9_.]+@(?:[-a-z0-9]+\.)+[a-z]{2,6}(?:\s|$)", result, re.IGNORECASE) is not None
     True
     """
-    return "%s@%s.%s" % (xunit.any_string(max_length=10),
-                         xunit.any_string(max_length=10),
-                         xunit.any_string(min_length=2, max_length=3))
+    return xunit.any_email()
 
 
 @any_field.register(models.FloatField)
@@ -248,11 +252,11 @@ def any_file_field(field, **kwargs):
 
         if files:
             result_file = random.choice(files)
-            instance = field.storage.open("%s/%s" % (path, result_file)).file
+            instance = field.storage.open(os.path.join(path, result_file)).file
             return FieldFile(instance, field, result_file)
 
         for subdir in subdirs:
-            result = get_some_file("%s/%s" % (path, subdir))
+            result = get_some_file(os.path.join(path, subdir))
             if result:
                 return result
 
@@ -261,6 +265,9 @@ def any_file_field(field, **kwargs):
         upload_to = os.path.dirname(generated_filepath)
     else:
         upload_to = field.upload_to
+    if not field.storage.exists(upload_to):
+        # make a directory, assuming it's on local file system
+        os.makedirs(field.storage.path(upload_to))
     result = get_some_file(upload_to)
 
     if result is None and not field.blank:
@@ -299,6 +306,19 @@ def any_filepath_field(field, **kwargs):
     return result
 
 
+if compat.uuid_field_defined:
+    @any_field.register(models.UUIDField)
+    def any_uuid_field(field, **kwargs):
+        """
+        Return random value for UUIDField
+        >>> result = any_field(models.UUIDField())
+        >>> type(result)
+        <class 'uuid.UUID'>
+        """
+        import uuid
+        return uuid.uuid4()
+
+
 if compat.ipaddress_field_defined:
     @any_field.register(models.IPAddressField)
     def any_ipaddress_field(field, **kwargs):
@@ -311,7 +331,7 @@ if compat.ipaddress_field_defined:
         >>> re.match(ipv4_re, result) is not None
         True
         """
-        nums = [str(xunit.any_int(min_value=0, max_value=255)) for _ in xrange(0, 4)]
+        nums = [str(xunit.any_int(min_value=0, max_value=255)) for _ in six.moves.range(0, 4)]
         return ".".join(nums)
 
 if validate_ipv6_address:
@@ -353,7 +373,7 @@ if validate_ipv6_address:
             else:
                 return any_genericipaddress_field(field)
         if protocol == 'ipv6':
-            nums = [str(xunit.any_string(hexdigits, min_length=4, max_length=4)) for _ in xrange(0, 8)]
+            nums = [str(xunit.any_string(hexdigits, min_length=4, max_length=4)) for _ in six.moves.range(0, 8)]
             return ":".join(nums)
 
 
@@ -453,14 +473,14 @@ def any_url_field(field, **kwargs):
                     if isinstance(validator, validators.URLValidator) and \
                     getattr(validator, 'verify_exists', False) == True]
         if verified:
-            url = choice(['http://news.yandex.ru/society.html',
-                          'http://video.google.com/?hl=en&tab=wv',
-                          'http://www.microsoft.com/en/us/default.aspx',
-                          'http://habrahabr.ru/company/opera/',
-                          'http://www.apple.com/support/hardware/',
-                          'http://ya.ru',
-                          'http://google.com',
-                          'http://fr.wikipedia.org/wiki/France'])
+            url = random.choice(['http://news.yandex.ru/society.html',
+                                 'http://video.google.com/?hl=en&tab=wv',
+                                 'http://www.microsoft.com/en/us/default.aspx',
+                                 'http://habrahabr.ru/company/opera/',
+                                 'http://www.apple.com/support/hardware/',
+                                 'http://ya.ru',
+                                 'http://google.com',
+                                 'http://fr.wikipedia.org/wiki/France'])
         else:
             url = "http://%s.%s/%s" % (
                 xunit.any_string(max_length=10),
