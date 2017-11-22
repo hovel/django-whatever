@@ -45,6 +45,9 @@ def any_field_blank(function):
         if kwargs.get('isnull', False):
             return None
 
+        if field.blank and field.null:
+            return None
+
         # if field.blank and random.random() < 0.1:
         #     if field.null:
         #         return None
